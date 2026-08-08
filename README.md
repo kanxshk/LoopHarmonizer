@@ -21,10 +21,66 @@ The producer routes its MIDI output to whichever pad, bass or lead instrument th
 
 ## Status
 
-**Phase 1 — scaffold.** The plugin builds, loads and passes audio through untouched.
-No analysis and no MIDI generation yet. Later phases will build pitch detection,
-key detection and the MIDI generators as standalone modules before wiring them into
+**Phase 1 — scaffold.** ✅ The plugin builds, loads and passes audio through untouched.
+
+**Phase 2 — pitch detection.** ✅ YIN implemented in `LoopHarmonizerDSP`, a static library
+with no JUCE dependency, validated by a standalone console harness. Not yet wired into
 `processBlock`.
+
+Later phases add key/scale detection, root tracking and the MIDI generators — each built
+as a standalone module and tested before integration.
+
+## Project layout
+
+| Path | What it is |
+|---|---|
+| `Source/DSP/` | Analysis DSP. **No JUCE dependency** — builds as `LoopHarmonizerDSP`. |
+| `Source/Plugin*.{h,cpp}` | JUCE plugin wrapper. |
+| `Tools/PitchTest/` | Console harness for validating pitch detection against real loops. |
+
+Keeping the DSP JUCE-free means each algorithm can be tested from a plain console program
+that compiles in seconds, rather than through a plugin host.
+
+## Pitch detection harness
+
+```bash
+cmake --build build --config Release --target PitchTest
+```
+
+Verify the algorithm against synthetic signals — pure sines, harmonic-rich tones that
+provoke octave errors, several sample rates, and a silence-rejection check:
+
+```bash
+build\Release\PitchTest.exe --selftest
+```
+
+Analyse one of your own loops:
+
+```bash
+build\Release\PitchTest.exe myloop.wav
+```
+
+Each voiced frame prints as timestamp, frequency, nearest note, cents deviation, clarity
+and RMS, followed by a pitch-class histogram — a preview of what Phase 3 key detection
+will consume.
+
+Useful flags: `--all` includes unvoiced frames, `--csv` emits CSV for plotting, and
+`--frame` / `--hop` / `--fmin` / `--fmax` / `--threshold` / `--min-clarity` / `--min-rms`
+tune the detector. Run with `--help` for the full list.
+
+Reads PCM (8/16/24/32-bit) and IEEE float (32/64-bit) WAV, mono or multichannel
+(downmixed). Re-export compressed files as PCM first.
+
+### Tuning notes
+
+`--frame` sets the floor on detectable pitch: the analysis window must hold two full
+periods, so 2048 samples reaches down to about 43 Hz at 44.1 kHz. Going below that needs a
+larger frame, which costs time resolution. The harness warns when the requested `--fmin`
+is unreachable rather than silently narrowing the search.
+
+Frames straddling a note change produce brief low-clarity readings, sometimes an octave
+out. That is expected — it is what the `clarity` value exists to filter. Note segmentation
+in a later phase will smooth these away.
 
 ## Requirements
 
