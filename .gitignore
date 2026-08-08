@@ -1,0 +1,17 @@
+# Build output
+build/
+out/
+cmake-build-*/
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+CMakeSettings.json
+CMakeUserPresets.json
+
+# OS cruft
+Thumbs.db
+desktop.ini
+.DS_Store
