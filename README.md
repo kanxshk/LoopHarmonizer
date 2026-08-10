@@ -24,11 +24,13 @@ The producer routes its MIDI output to whichever pad, bass or lead instrument th
 **Phase 1 — scaffold.** ✅ The plugin builds, loads and passes audio through untouched.
 
 **Phase 2 — pitch detection.** ✅ YIN implemented in `LoopHarmonizerDSP`, a static library
-with no JUCE dependency, validated by a standalone console harness. Not yet wired into
-`processBlock`.
+with no JUCE dependency, validated by a standalone console harness.
 
-Later phases add key/scale detection, root tracking and the MIDI generators — each built
-as a standalone module and tested before integration.
+**Phase 3 — key/scale detection.** ✅ Note segmentation plus Krumhansl-Schmuckler key-profile
+correlation, returning a best fit, a runner-up and an explanation of any ambiguity.
+
+None of it is wired into `processBlock` yet. Later phases add root tracking and the MIDI
+generators — each built as a standalone module and tested before integration.
 
 ## Project layout
 
@@ -60,13 +62,14 @@ Analyse one of your own loops:
 build\Release\PitchTest.exe myloop.wav
 ```
 
-Each voiced frame prints as timestamp, frequency, nearest note, cents deviation, clarity
-and RMS, followed by a pitch-class histogram — a preview of what Phase 3 key detection
-will consume.
+The report runs the full chain — pitch detection, note segmentation, key detection — and
+prints the note events, a weighted pitch-class histogram, and the key estimate with its
+runner-up.
 
-Useful flags: `--all` includes unvoiced frames, `--csv` emits CSV for plotting, and
-`--frame` / `--hop` / `--fmin` / `--fmax` / `--threshold` / `--min-clarity` / `--min-rms`
-tune the detector. Run with `--help` for the full list.
+Useful flags: `--frames` shows the per-frame pitch table (off by default, it is long),
+`--all` adds unvoiced frames to it, `--csv` emits per-frame CSV for plotting, `--no-modes`
+restricts key detection to major and natural minor, and `--top N` lists more key
+candidates. Run with `--help` for the full list.
 
 Reads PCM (8/16/24/32-bit) and IEEE float (32/64-bit) WAV, mono or multichannel
 (downmixed). Re-export compressed files as PCM first.
@@ -79,8 +82,45 @@ larger frame, which costs time resolution. The harness warns when the requested 
 is unreachable rather than silently narrowing the search.
 
 Frames straddling a note change produce brief low-clarity readings, sometimes an octave
-out. That is expected — it is what the `clarity` value exists to filter. Note segmentation
-in a later phase will smooth these away.
+out. That is expected — it is what the `clarity` value exists to filter, and note
+segmentation now absorbs them.
+
+## How key detection decides
+
+Frames are first grouped into note events, then each event contributes **duration ×
+clarity** to a pitch-class histogram. Weighting by duration is the point: a note held for
+half a second should outweigh a 12 ms artefact thrown off by a slide or bend, which raw
+frame counting would treat as comparable.
+
+That histogram is correlated against key profiles at all twelve rotations. Major and
+natural minor use the empirical Krumhansl-Kessler profiles. Modal profiles are derived
+from whichever of those two they resemble by exchanging the weights of the single degree
+the mode alters — that leaves the profile's mean and variance untouched, so every
+correlation in the ranking stays comparable.
+
+> Building modal templates from scratch does **not** work. A hand-assigned template is
+> effectively a flat scale-membership mask, and a flat mask correlates better with a spiky
+> real histogram than the nuanced Krumhansl curves do, so the modes beat major and minor on
+> nearly every input. This was caught by the self-test, where A Dorian and A Phrygian tied
+> at exactly `r=0.915` on a plain A minor phrase.
+
+### Reading the result
+
+`confidence` is the winning correlation — how well the material fits that key profile.
+`margin` is the gap to the runner-up — how distinctly it beat the alternatives. They are
+separate numbers on purpose: a phrase can fit B minor beautifully *and* fit B Phrygian
+just as well.
+
+Two ambiguities get called out explicitly:
+
+- **Same note set.** Relative major/minor, or two modes of one parent scale, contain
+  identical notes. Only emphasis separates them.
+- **Undecidable.** When the notes that would distinguish the top two never occur in the
+  loop, no analysis could have chosen between them. The harness names the missing note and
+  says the winner was picked by convention — major and minor rank ahead of modes on a tie.
+
+A B minor riff that never plays its second degree is indistinguishable from B Phrygian.
+That is a fact about the riff, not a limitation of the detector.
 
 ## Requirements
 

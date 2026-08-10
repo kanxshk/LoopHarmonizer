@@ -22,6 +22,10 @@ option(LOOPHARMONIZER_BUILD_TOOLS "Build the standalone DSP test harnesses" ON)
 add_library(LoopHarmonizerDSP STATIC
     Source/DSP/YinPitchDetector.cpp
     Source/DSP/YinPitchDetector.h
+    Source/DSP/NoteSegmenter.cpp
+    Source/DSP/NoteSegmenter.h
+    Source/DSP/KeyDetector.cpp
+    Source/DSP/KeyDetector.h
     Source/DSP/NoteUtils.cpp
     Source/DSP/NoteUtils.h)
 
