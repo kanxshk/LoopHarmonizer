@@ -270,14 +270,41 @@ namespace
             return;
         }
 
-        std::printf ("  best       : %-18s r = %.3f   confidence %.2f\n",
-                     key.best.name().c_str(), key.best.correlation, key.confidence);
-        std::printf ("  runner-up  : %-18s r = %.3f\n",
-                     key.runnerUp.name().c_str(), key.runnerUp.correlation);
-        std::printf ("  margin     : %.3f%s\n",
-                     key.margin, key.ambiguous ? "   <- ambiguous" : "");
+        // Root and scale are reported separately because they fail separately -
+        // a bassline can pin the root down while saying nothing about the mode.
+        std::printf ("  overall    : %-18s r = %.3f\n",
+                     key.best.name().c_str(), key.best.correlation);
+        std::printf ("  tonic      : %-18s confidence %.2f   (next best %s, margin %.3f)\n",
+                     lh::NoteUtils::pitchClassName (key.best.tonicPitchClass),
+                     key.tonic.value,
+                     key.tonic.runnerUp.isValid()
+                         ? lh::NoteUtils::pitchClassName (key.tonic.runnerUp.tonicPitchClass) : "-",
+                     key.tonic.margin);
+        std::printf ("  mode       : %-18s confidence %.2f   (next best %s, margin %.3f)\n",
+                     scaleTypeName (key.best.scale),
+                     key.mode.value,
+                     key.mode.runnerUp.isValid()
+                         ? scaleTypeName (key.mode.runnerUp.scale) : "-",
+                     key.mode.margin);
         std::printf ("  based on   : %d events, %d distinct pitch classes\n",
                      key.eventsUsed, key.distinctPitchClasses);
+
+        if (key.thirdAbsent)
+        {
+            const int minorThird = (key.best.tonicPitchClass + 3) % 12;
+            const int majorThird = (key.best.tonicPitchClass + 4) % 12;
+
+            std::printf ("\n  No third above %s: neither %s nor %s occurs anywhere in this loop.\n"
+                         "  That is the note separating major from minor, so the mode cannot be\n"
+                         "  determined from this material at all - the mode confidence above is\n"
+                         "  reporting a guess. Root tracking and root-driven basslines are\n"
+                         "  unaffected; diatonic chord generation would be inventing the third.\n"
+                         "  Basslines do this routinely, stating roots and fifths and leaving the\n"
+                         "  third to other instruments.\n",
+                         lh::NoteUtils::pitchClassName (key.best.tonicPitchClass),
+                         lh::NoteUtils::pitchClassName (minorThird),
+                         lh::NoteUtils::pitchClassName (majorThird));
+        }
 
         // Explain *why* the top two are close, when they are.
         if (key.runnerUpUndecidable)
@@ -306,8 +333,9 @@ namespace
                          "  The winner was chosen on emphasis (duration x clarity per note).\n",
                          key.best.name().c_str(), key.runnerUp.name().c_str());
         }
-        else if (key.ambiguous)
+        else if (key.ambiguous && ! key.thirdAbsent)
         {
+            // Only worth saying when the missing third has not already explained it.
             std::printf ("\n  The top two fit about equally well but are built from different notes,\n"
                          "  which usually means chromatic content, too short a phrase, or a\n"
                          "  genuine modal mixture.\n");
@@ -664,6 +692,49 @@ namespace
                          result.best.name().c_str(), result.runnerUp.name().c_str(),
                          result.margin,
                          result.runnerUpSharesNoteSet ? " (same notes)" : "");
+            allPassed &= passed;
+        }
+
+        std::printf ("\nkey detection - tonic vs mode confidence:\n");
+
+        // A bassline shape: root and fifth stated emphatically, no third anywhere.
+        // The root should be settled and the mode should not be.
+        {
+            const lh::KeyDetector detector;
+            const auto result = detector.analyse (eventsFromNotes (
+                { { 59, 2.0 }, { 66, 0.5 }, { 64, 0.6 }, { 69, 0.6 }, { 59, 1.5 } }));
+
+            const bool passed = result.valid
+                             && result.thirdAbsent
+                             && result.best.tonicPitchClass == 11
+                             && result.tonic.value > result.mode.value;
+
+            std::printf ("  %s  %-26s tonic %s conf %.2f, mode %s conf %.2f, third absent %s\n",
+                         passed ? "ok  " : "FAIL", "bassline, no third",
+                         lh::NoteUtils::pitchClassName (result.best.tonicPitchClass),
+                         result.tonic.value,
+                         scaleTypeName (result.best.scale), result.mode.value,
+                         result.thirdAbsent ? "yes" : "no");
+            allPassed &= passed;
+        }
+
+        // Positive control: the same root, now with its minor third present.
+        {
+            const lh::KeyDetector detector;
+            const auto result = detector.analyse (eventsFromNotes (
+                { { 59, 2.0 }, { 62, 1.0 }, { 66, 0.8 }, { 64, 0.6 },
+                  { 69, 0.5 }, { 67, 0.4 }, { 61, 0.4 }, { 59, 1.5 } }));
+
+            const bool passed = result.valid
+                             && ! result.thirdAbsent
+                             && result.best.name() == "B minor";
+
+            std::printf ("  %s  %-26s tonic %s conf %.2f, mode %s conf %.2f, third absent %s\n",
+                         passed ? "ok  " : "FAIL", "same root, third present",
+                         lh::NoteUtils::pitchClassName (result.best.tonicPitchClass),
+                         result.tonic.value,
+                         scaleTypeName (result.best.scale), result.mode.value,
+                         result.thirdAbsent ? "yes" : "no");
             allPassed &= passed;
         }
 

@@ -325,6 +325,51 @@ namespace lh
         result.ambiguous = result.margin < params.ambiguityMargin;
         result.runnerUpSharesNoteSet = result.best.sharesNoteSetWith (result.runnerUp);
 
+        // Split the verdict into "which root" and "which scale on that root".
+        // The list is already sorted, so the first entry that differs in the
+        // relevant way is by construction the strongest such alternative.
+        const auto fitness = [&params = params] (double correlation, double margin, double decisiveMargin)
+        {
+            const double settled = decisiveMargin > 0.0
+                ? std::clamp (margin / decisiveMargin, 0.0, 1.0)
+                : 1.0;
+
+            return std::clamp (correlation, 0.0, 1.0) * settled;
+        };
+
+        for (const auto& candidate : result.ranked)
+        {
+            if (candidate.tonicPitchClass != result.best.tonicPitchClass)
+            {
+                result.tonic.runnerUp = candidate;
+                result.tonic.margin = result.best.correlation - candidate.correlation;
+                break;
+            }
+        }
+
+        for (const auto& candidate : result.ranked)
+        {
+            if (candidate.tonicPitchClass == result.best.tonicPitchClass
+                && candidate.scale != result.best.scale)
+            {
+                result.mode.runnerUp = candidate;
+                result.mode.margin = result.best.correlation - candidate.correlation;
+                break;
+            }
+        }
+
+        result.tonic.value = fitness (result.best.correlation, result.tonic.margin,
+                                      params.tonicDecisiveMargin);
+        result.mode.value = fitness (result.best.correlation, result.mode.margin,
+                                     params.modeDecisiveMargin);
+
+        // Without a third of either quality, major and minor are unreachable.
+        const std::size_t minorThird = static_cast<std::size_t> ((result.best.tonicPitchClass + 3) % 12);
+        const std::size_t majorThird = static_cast<std::size_t> ((result.best.tonicPitchClass + 4) % 12);
+
+        result.thirdAbsent = result.histogram[minorThird] <= 0.0
+                          && result.histogram[majorThird] <= 0.0;
+
         // Work out whether the evidence could ever have separated the top two.
         if (result.runnerUp.isValid())
         {

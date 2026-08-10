@@ -106,12 +106,30 @@ correlation in the ranking stays comparable.
 
 ### Reading the result
 
-`confidence` is the winning correlation — how well the material fits that key profile.
-`margin` is the gap to the runner-up — how distinctly it beat the alternatives. They are
-separate numbers on purpose: a phrase can fit B minor beautifully *and* fit B Phrygian
-just as well.
+**Tonic and mode carry separate confidences, because they fail separately.** A bassline
+pins its root down emphatically while saying almost nothing about the mode, and one blended
+number would hide the half that is actually trustworthy:
 
-Two ambiguities get called out explicitly:
+```
+overall    : B Mixolydian       r = 0.665
+tonic      : B                  confidence 0.67   (next best E, margin 0.072)
+mode       : Mixolydian         confidence 0.21   (next best Phrygian, margin 0.016)
+```
+
+Each confidence combines how well the winner fits with how far clear of its nearest
+alternative it finished — a perfect fit that ties with a rival scores low, because the
+question was never actually settled. The tonic's rival is the best candidate on a
+*different* root; the mode's rival is the best candidate sharing the winning root.
+
+This matters downstream: root tracking and root-driven basslines need only the tonic, so
+they work on material like the above. Diatonic chord generation needs the mode too, and on
+that loop it would be guessing.
+
+Three ambiguities get called out explicitly:
+
+- **No third.** When neither third above the tonic occurs anywhere, major and minor are
+  indistinguishable — that interval is what separates them. Basslines do this routinely,
+  stating roots and fifths and leaving the third to other instruments.
 
 - **Same note set.** Relative major/minor, or two modes of one parent scale, contain
   identical notes. Only emphasis separates them.

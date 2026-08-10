@@ -58,12 +58,48 @@ namespace lh
     };
 
     //==============================================================================
+    /** How decisively one choice beat its nearest alternative. */
+    struct ConfidenceBreakdown
+    {
+        /** 0..1. Combines how well the winner fits with how far clear of the
+            alternative it finished - a perfect fit that ties with a rival scores
+            low, because the question was never actually settled. */
+        double value = 0.0;
+
+        /** Raw correlation gap to the nearest alternative. */
+        double margin = 0.0;
+
+        /** The alternative that came closest. */
+        KeyCandidate runnerUp;
+    };
+
+    //==============================================================================
     struct KeyDetectionResult
     {
         bool valid = false;
 
         KeyCandidate best;
         KeyCandidate runnerUp;
+
+        /** How sure we are of the root, independent of the scale built on it.
+            Its runnerUp is the strongest candidate on a *different* tonic. */
+        ConfidenceBreakdown tonic;
+
+        /** How sure we are of the scale, given that root. Its runnerUp is the
+            strongest candidate sharing the winning tonic.
+
+            These are reported separately because they fail independently. A
+            bassline pins its root down emphatically while saying almost nothing
+            about the mode, and one blended number would hide the half that is
+            actually trustworthy. Root tracking and root-driven basslines only
+            need the tonic; diatonic chord generation needs the mode too. */
+        ConfidenceBreakdown mode;
+
+        /** True when neither third degree above the winning tonic occurs in the
+            material. Major and minor are then indistinguishable, since the third
+            is the note that separates them. Common in basslines, which tend to
+            state roots and fifths and leave the third to other instruments. */
+        bool thirdAbsent = false;
 
         /** best.correlation - runnerUp.correlation. Small means the two fit the
             material about equally well. */
@@ -144,6 +180,14 @@ namespace lh
 
             /** Margin below which the result is reported as ambiguous. */
             double ambiguityMargin = 0.05;
+
+            /** Correlation gap treated as fully settling the tonic. Larger than
+                the mode equivalent because twelve tonics compete, against at most
+                seven scales on any one of them. */
+            double tonicDecisiveMargin = 0.06;
+
+            /** Correlation gap treated as fully settling the mode. */
+            double modeDecisiveMargin = 0.05;
         };
 
         KeyDetector() = default;
